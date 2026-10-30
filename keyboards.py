@@ -1,39 +1,36 @@
-"""Inline keyboards used by the manager bot."""
-
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 
-def format_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton("🎵 MP3", callback_data="format:mp3"),
-        InlineKeyboardButton("🎬 MP4", callback_data="format:mp4"),
-    ]])
-
-
-def mp3_quality_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton("128 kbps", callback_data="quality:mp3:128"),
-        InlineKeyboardButton("192 kbps", callback_data="quality:mp3:192"),
-        InlineKeyboardButton("320 kbps", callback_data="quality:mp3:320"),
-    ]])
-
-
-def mp4_quality_keyboard(heights: list[int]) -> InlineKeyboardMarkup:
-    preferred = [360, 480, 720, 1080, 1440, 2160]
-    available = [height for height in preferred if height in heights]
-    if not available:
-        available = sorted(set(heights))[-6:] if heights else [720]
-
-    buttons = [
-        InlineKeyboardButton(f"{height}p", callback_data=f"quality:mp4:{height}")
-        for height in available
+def media_type_keyboard():
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🎵 MP3 Audio",
+                callback_data="mode:audio"
+            ),
+            InlineKeyboardButton(
+                "🎬 MP4 Video",
+                callback_data="mode:video"
+            ),
+        ]
     ]
-    rows = [buttons[index:index + 3] for index in range(0, len(buttons), 3)]
-    return InlineKeyboardMarkup(rows)
+
+    return InlineKeyboardMarkup(keyboard)
 
 
-def delivery_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📦 ZIP archive (recommended)", callback_data="delivery:zip")],
-        [InlineKeyboardButton("📄 Send files separately", callback_data="delivery:separate")],
-    ])
+def video_quality_keyboard():
+    keyboard = [
+        [
+            InlineKeyboardButton("Best", callback_data="quality:best"),
+            InlineKeyboardButton("1080p", callback_data="quality:1080"),
+        ],
+        [
+            InlineKeyboardButton("720p", callback_data="quality:720"),
+            InlineKeyboardButton("480p", callback_data="quality:480"),
+        ],
+        [
+            InlineKeyboardButton("360p", callback_data="quality:360"),
+        ],
+    ]
+
+    return InlineKeyboardMarkup(keyboard)

@@ -1,104 +1,112 @@
-"""yt-dlp inspection and download helpers."""
-
-import os
+import sys
+import subprocess
 from pathlib import Path
-from typing import Any
 
-import yt_dlp
-
-from config import settings
+from config import DOWNLOAD_DIR, COOKIE_FILE
 
 
-def common_options() -> dict[str, Any]:
-    options: dict[str, Any] = {
-        "quiet": True,
-        "no_warnings": True,
-        "ignoreerrors": True,
-    }
-    if settings.cookie_file:
-        options["cookiefile"] = settings.cookie_file
-    return options
+VIDEO_QUALITIES = {
+    "best": None,
+    "1080": 1080,
+    "720": 720,
+    "480": 480,
+    "360": 360,
+}
 
 
-def inspect_url(url: str) -> dict[str, Any]:
-    options = common_options()
-    options.update({
-        "extract_flat": "in_playlist",
-        "noplaylist": False,
-    })
-    with yt_dlp.YoutubeDL(options) as ydl:
-        info = ydl.extract_info(url, download=False)
-    if not info:
-        raise RuntimeError("yt-dlp returned no information.")
-    return info
+def download_media(url, user_id, mode="video", quality="1080"):
+    if not url.startswith(("https://", "http://")):
+        raise ValueError("Please enter a valid HTTP or HTTPS URL.")
 
+    if mode == "audio":
+        fmt = "bestaudio/best"
 
-def inspect_video_formats(url: str) -> tuple[dict[str, Any], list[int]]:
-    options = common_options()
-    options.update({
-        "noplaylist": True,
-        "extract_flat": False,
-    })
-    with yt_dlp.YoutubeDL(options) as ydl:
-        info = ydl.extract_info(url, download=False)
-    if not info:
-        raise RuntimeError("yt-dlp returned no video information.")
+        extra_args = [
+            "-x",
+            "--audio-format", "mp3",
+            "--audio-quality", "192K",
+        ]
 
-    heights = sorted({
-        int(fmt["height"])
-        for fmt in info.get("formats", [])
-        if fmt.get("height")
-        and fmt.get("vcodec") not in (None, "none")
-    })
-    return info, heights
+    elif mode == "video":
+        if quality not in VIDEO_QUALITIES:
+            raise ValueError("Unsupported video quality.")
 
+        height = VIDEO_QUALITIES[quality]
 
-def download_one(url: str, output_dir: str, mode: str, quality: str) -> Path:
-    """Download exactly one item into a dedicated directory and return its media file."""
-    folder = Path(output_dir)
-    folder.mkdir(parents=True, exist_ok=True)
-
-    options = common_options()
-    options.update({
-        "noplaylist": True,
-        "outtmpl": str(folder / "%(title).160B [%(id)s].%(ext)s"),
-        "overwrites": True,
-        "continuedl": True,
-        "windowsfilenames": True,
-    })
-
-    if mode == "mp3":
-        options.update({
-            "format": "bestaudio/best",
-            "postprocessors": [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": str(quality),
-            }],
-        })
-        allowed = {".mp3"}
-    elif mode == "mp4":
-        height = int(quality)
-        options.update({
-            "format": (
+        if height is None:
+            fmt = "bestvideo*+bestaudio/best"
+        else:
+            fmt = (
                 f"bestvideo[height<={height}]+bestaudio/"
-                f"best[height<={height}]/best"
-            ),
-            "merge_output_format": "mp4",
-        })
-        allowed = {".mp4", ".mkv", ".webm"}
+                f"best[height<={height}]"
+            )
+
+        extra_args = [
+            "--merge-output-format", "mp4",
+        ]
+
     else:
-        raise ValueError(f"Unsupported format: {mode}")
+        raise ValueError("Unsupported download mode.")
 
-    with yt_dlp.YoutubeDL(options) as ydl:
-        result = ydl.extract_info(url, download=True)
-        if not result:
-            raise RuntimeError("yt-dlp could not download this item.")
+    user_dir = DOWNLOAD_DIR / str(user_id)
+    user_dir.mkdir(parents=True, exist_ok=True)
 
-    candidates = [
-        path for path in folder.iterdir()
-        if path.is_file() and path.suffix.lower() in allowed
+    command = [
+        sys.executable, "-m", "yt_dlp",
+        "--no-playlist",
+        "--windows-filenames",
+        "--restrict-filenames",
+        "-f", fmt,
+        "-P", str(user_dir),
+        "-o", "%(title).150B [%(id)s].%(ext)s",
+        "--no-overwrites",
     ]
-    if not candidates:
-        raise RuntimeError("Download completed but no output media file was found.")
-    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+    if COOKIE_FILE and Path(COOKIE_FILE).is_file():
+        command.extend(["--cookies", COOKIE_FILE])
+
+    command.extend([
+        *extra_args,
+        "--",
+        url,
+    ])
+
+    print(f"Starting {mode} download for user {user_id}...")
+
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        print("yt-dlp error:")
+        print(result.stderr)
+
+        raise RuntimeError(
+            "Download failed. Check the URL or try another video."
+        )
+
+    downloaded_files = sorted(
+        user_dir.iterdir(),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+
+    if not downloaded_files:
+        raise RuntimeError("Download completed but no file was found.")
+
+    return downloaded_files[0]
+
+
+def cleanup_user_download(user_id):
+    user_dir = DOWNLOAD_DIR / str(user_id)
+
+    if not user_dir.exists():
+        return
+
+    for item in user_dir.iterdir():
+        if item.is_file():
+            item.unlink()
+
+    user_dir.rmdir()
