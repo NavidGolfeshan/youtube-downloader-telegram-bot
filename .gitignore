@@ -1,0 +1,26 @@
+# Secrets
+.env
+cookies.txt
+*.cookies
+*.cookie
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.envrc
+
+# Runtime/output files
+downloads/
+*.zip
+*.mp3
+*.mp4
+*.mkv
+*.webm
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
